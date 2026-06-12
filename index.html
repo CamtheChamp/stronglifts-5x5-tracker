@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StrongLifts 5x5 Tracker</title>
+  <link rel="stylesheet" href="style.css">
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+
+  <!-- iOS home screen support -->
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="5x5 Tracker">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>5x5 Tracker</h1>
+    </header>
+
+    <section id="setup-screen" class="screen hidden">
+      <h2 id="setup-title">Set Up Your Starting Weights</h2>
+
+      <div class="settings-tabs">
+        <button class="settings-tab-btn active" data-tab="weights" type="button">Weights</button>
+        <button class="settings-tab-btn" data-tab="plates" type="button">Plates</button>
+        <button class="settings-tab-btn" data-tab="data" type="button">Data</button>
+      </div>
+
+      <form id="setup-form">
+        <div class="settings-tab-panel" data-tab="weights">
+          <div class="field">
+            <label>Units</label>
+            <div class="unit-toggle">
+              <label><input type="radio" name="unit" value="lb" checked> lb</label>
+              <label><input type="radio" name="unit" value="kg"> kg</label>
+            </div>
+          </div>
+          <div id="setup-exercises"></div>
+        </div>
+
+        <div class="settings-tab-panel hidden" data-tab="plates">
+          <h3>Plate Inventory</h3>
+          <p class="hint">How many of each plate you own (total, not per side). Used to calculate which plates to load.</p>
+          <div id="setup-plates"></div>
+        </div>
+
+        <button type="submit" class="primary-btn">Save & Start</button>
+      </form>
+
+      <div class="settings-tab-panel import-section hidden" data-tab="data">
+        <h3>Export Your Data</h3>
+        <p class="hint">
+          Download your workout history as a CSV file, which you can open in Excel or
+          Google Sheets, or keep as a backup.
+        </p>
+        <button id="export-data-btn" class="secondary-btn" type="button">Export Data</button>
+
+        <h3>Import from StrongLifts App</h3>
+        <p class="hint">
+          Upload a CSV history export from the official StrongLifts 5x5 app. This replaces your
+          current workout history and sets your weights to match your most recent logged session.
+        </p>
+        <label for="import-csv" class="secondary-btn import-label">Choose CSV File</label>
+        <input type="file" id="import-csv" accept=".csv" class="hidden">
+      </div>
+    </section>
+
+    <section id="home-screen" class="screen hidden">
+      <div class="workout-header">
+        <h2 id="workout-title"></h2>
+        <p id="workout-date"></p>
+      </div>
+
+      <div class="workout-selector">
+        <button class="workout-select-btn" data-workout="A" type="button">
+          Workout A
+          <span class="badge hidden">Recommended</span>
+        </button>
+        <button class="workout-select-btn" data-workout="B" type="button">
+          Workout B
+          <span class="badge hidden">Recommended</span>
+        </button>
+      </div>
+
+      <div id="exercise-list"></div>
+
+      <div class="field">
+        <label for="body-weight-input" id="body-weight-label">Body Weight</label>
+        <input type="number" id="body-weight-input" min="0" step="0.1" placeholder="Optional">
+      </div>
+
+      <button id="finish-btn" class="primary-btn" type="button">Finish Workout</button>
+    </section>
+
+    <section id="progress-screen" class="screen hidden">
+      <h2>Progress</h2>
+      <div class="range-toggle">
+        <button class="range-btn" data-range="month" type="button">Last Month</button>
+        <button class="range-btn" data-range="year" type="button">Last Year</button>
+        <button class="range-btn active" data-range="lifetime" type="button">Lifetime</button>
+      </div>
+      <canvas id="progress-chart" height="200"></canvas>
+      <p id="chart-empty-msg" class="hint hidden">No workouts logged in this range.</p>
+    </section>
+
+    <section id="history-screen" class="screen hidden">
+      <h2>History</h2>
+      <div id="history-list"></div>
+    </section>
+  </div>
+
+  <div id="congrats-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2>🎉 Great Workout!</h2>
+      <div id="congrats-body"></div>
+      <button id="congrats-close-btn" class="primary-btn" type="button">Nice!</button>
+    </div>
+  </div>
+
+  <div id="rest-timer-bar" class="rest-timer-bar hidden">
+    <span class="rest-timer-label">Rest</span>
+    <span id="timer-display">3:00</span>
+    <button id="timer-skip-btn" type="button">Skip</button>
+  </div>
+
+  <nav id="bottom-nav" class="bottom-nav hidden">
+    <button class="nav-btn" data-screen="home" type="button">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Home</span>
+    </button>
+    <button class="nav-btn" data-screen="progress" type="button">
+      <span class="nav-icon">📈</span>
+      <span class="nav-label">Progress</span>
+    </button>
+    <button class="nav-btn" data-screen="history" type="button">
+      <span class="nav-icon">📜</span>
+      <span class="nav-label">History</span>
+    </button>
+    <button class="nav-btn" data-screen="settings" type="button">
+      <span class="nav-icon">⚙</span>
+      <span class="nav-label">Settings</span>
+    </button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

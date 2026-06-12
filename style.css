@@ -1,0 +1,400 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  margin: 0;
+  background: #f4f4f4;
+  color: #222;
+}
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: 88px;
+}
+
+#app.timer-active {
+  padding-bottom: 134px;
+}
+
+header {
+  margin-bottom: 16px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+}
+
+.modal-card h2 {
+  margin-top: 0;
+}
+
+.congrats-stat {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 8px 0;
+}
+
+.congrats-details {
+  text-align: left;
+  margin: 16px 0;
+  padding-left: 20px;
+  color: #444;
+  font-size: 0.9rem;
+}
+
+.screen {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.field input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.unit-toggle label {
+  margin-right: 16px;
+  font-weight: normal;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.settings-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #2563eb;
+  background: white;
+  color: #2563eb;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.settings-tab-btn.active {
+  background: #2563eb;
+  color: white;
+}
+
+.import-section {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.import-section h3 {
+  margin: 0 0 8px;
+}
+
+.import-label {
+  display: block;
+  text-align: center;
+}
+
+.primary-btn,
+.secondary-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 1.1rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.primary-btn {
+  background: #2563eb;
+  color: white;
+}
+
+.secondary-btn {
+  background: #e5e7eb;
+  color: #222;
+}
+
+.exercise-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.exercise-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.exercise-header h3 {
+  margin: 0;
+}
+
+.weight {
+  font-weight: bold;
+  color: #2563eb;
+}
+
+.plates {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0 0 8px;
+}
+
+.sets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.set-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 2px solid #ccc;
+  background: #f9fafb;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.set-btn.done {
+  background: #22c55e;
+  border-color: #16a34a;
+  color: white;
+}
+
+.set-btn.failed {
+  background: #ef4444;
+  border-color: #dc2626;
+  color: white;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 8px 0 0;
+}
+
+.rest-timer-bar {
+  position: fixed;
+  bottom: 56px;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px;
+  background: #f0f4ff;
+  border-top: 1px solid #e5e7eb;
+}
+
+.rest-timer-label {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+#timer-display {
+  font-size: 1.3rem;
+  font-weight: bold;
+}
+
+#timer-skip-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+
+.workout-header {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.workout-header p {
+  color: #666;
+  margin: 4px 0 0;
+}
+
+.range-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.range-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #2563eb;
+  background: white;
+  color: #2563eb;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.range-btn.active {
+  background: #2563eb;
+  color: white;
+}
+
+#progress-chart {
+  margin-bottom: 16px;
+}
+
+.history-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.history-card h4 {
+  margin: 0 0 8px;
+}
+
+.history-exercise {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.tag {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: white;
+}
+
+.tag.success {
+  background: #22c55e;
+}
+
+.tag.fail {
+  background: #ef4444;
+}
+
+.tag.deload {
+  background: #f59e0b;
+}
+
+.workout-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.workout-select-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid #ccc;
+  background: white;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #222;
+  cursor: pointer;
+}
+
+.workout-select-btn.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.workout-select-btn .badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  font-weight: normal;
+  color: #16a34a;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+}
+
+.nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 12px;
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  color: #666;
+  cursor: pointer;
+}
+
+.nav-btn.active {
+  color: #2563eb;
+}
+
+.nav-icon {
+  font-size: 1.3rem;
+}
