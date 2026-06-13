@@ -328,6 +328,61 @@ h1 {
   cursor: pointer;
 }
 
+.dashboard-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-card h3 {
+  margin: 0 0 8px;
+}
+
+.trend-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.trend-item:last-child {
+  border-bottom: none;
+}
+
+.trend-name {
+  font-weight: 600;
+}
+
+.trend-indicator {
+  font-size: 0.9rem;
+}
+
+.trend-up {
+  color: #16a34a;
+}
+
+.trend-down {
+  color: #ef4444;
+}
+
+.trend-stalled {
+  color: #f59e0b;
+}
+
+.trend-flat {
+  color: #666;
+}
+
+#deload-slider {
+  width: 100%;
+}
+
+#deload-preview {
+  margin-top: 8px;
+}
+
 .workout-header {
   text-align: center;
   margin-bottom: 16px;

@@ -231,6 +231,7 @@ let state = defaultState();
 function showScreen(name) {
   const isSetup = name === 'setup';
   document.getElementById('setup-screen').classList.toggle('hidden', name !== 'setup' && name !== 'settings');
+  document.getElementById('dashboard-screen').classList.toggle('hidden', name !== 'dashboard');
   document.getElementById('home-screen').classList.toggle('hidden', name !== 'home');
   document.getElementById('progress-screen').classList.toggle('hidden', name !== 'progress');
   document.getElementById('history-screen').classList.toggle('hidden', name !== 'history');
@@ -577,6 +578,7 @@ const OUTCOME_LABELS = {
 };
 
 let progressChart = null;
+let frequencyChart = null;
 let progressRange = 'lifetime';
 let visibleExercises = new Set(['squat']);
 
@@ -631,9 +633,11 @@ function renderHistoryScreen() {
       `
       : '';
 
+    const title = entry.workout === 'deload' ? 'Deload Day' : `Workout ${entry.workout}`;
+
     const card = document.createElement('div');
     card.className = 'history-card';
-    card.innerHTML = `<h4>${date} - Workout ${entry.workout}</h4>${rows}${bodyWeightRow}`;
+    card.innerHTML = `<h4>${date} - ${title}</h4>${rows}${bodyWeightRow}`;
     historyContainer.appendChild(card);
   });
 }
@@ -717,6 +721,229 @@ function renderProgressScreen() {
   });
 }
 
+// --- Dashboard ---
+
+function renderDashboard() {
+  renderLastWorkoutCard();
+  renderFrequencyChart();
+  renderWeightTrends();
+  renderDeloadCard();
+}
+
+function renderLastWorkoutCard() {
+  const history = getValidHistory();
+  const container = document.getElementById('last-workout-body');
+
+  if (history.length === 0) {
+    container.innerHTML = '<p class="hint">No workouts logged yet. Tap "Start Workout" to log your first session!</p>';
+    return;
+  }
+
+  const last = history[history.length - 1];
+  const date = new Date(last.date);
+  const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+  const dayLabel = daysAgo <= 0 ? 'Today' : daysAgo === 1 ? '1 day ago' : `${daysAgo} days ago`;
+  const title = last.workout === 'deload' ? 'Deload Day' : `Workout ${last.workout}`;
+
+  const rows = Object.keys(last.results)
+    .map((key) => {
+      const r = last.results[key];
+      const meta = getExerciseMeta(key);
+      const name = (meta && meta.name) || r.name || key;
+      const label = r.outcome === 'fail' ? `${OUTCOME_LABELS.fail} (${r.fails}/3)` : OUTCOME_LABELS[r.outcome];
+      return `
+        <div class="history-exercise">
+          <span>${name}</span>
+          <span class="tag ${r.outcome}">${label}</span>
+          <span>${r.weight} ${state.unit}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  container.innerHTML = `
+    <p class="congrats-stat">${title} - ${date.toLocaleDateString()} (${dayLabel})</p>
+    ${rows}
+  `;
+}
+
+// Buckets workout history into 12 weekly counts (Sunday-start weeks) for the
+// last ~3 months and renders them as a bar chart.
+function renderFrequencyChart() {
+  const canvas = document.getElementById('frequency-chart');
+  const emptyMsg = document.getElementById('frequency-empty-msg');
+
+  if (typeof Chart === 'undefined') {
+    canvas.classList.add('hidden');
+    emptyMsg.classList.add('hidden');
+    return;
+  }
+
+  if (frequencyChart) {
+    frequencyChart.destroy();
+    frequencyChart = null;
+  }
+
+  const history = getValidHistory().filter((entry) => entry.workout === 'A' || entry.workout === 'B');
+
+  if (history.length === 0) {
+    canvas.classList.add('hidden');
+    emptyMsg.classList.remove('hidden');
+    return;
+  }
+  canvas.classList.remove('hidden');
+  emptyMsg.classList.add('hidden');
+
+  const WEEKS = 12;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const weekBuckets = [];
+  for (let i = WEEKS - 1; i >= 0; i--) {
+    const start = new Date(today);
+    start.setDate(start.getDate() - start.getDay() - i * 7);
+    weekBuckets.push({ start, count: 0 });
+  }
+
+  history.forEach((entry) => {
+    const date = new Date(entry.date);
+    for (let i = weekBuckets.length - 1; i >= 0; i--) {
+      if (date >= weekBuckets[i].start) {
+        weekBuckets[i].count += 1;
+        break;
+      }
+    }
+  });
+
+  const labels = weekBuckets.map((b) => b.start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+  const data = weekBuckets.map((b) => b.count);
+
+  frequencyChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Workouts',
+        data,
+        backgroundColor: '#2563eb',
+      }],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+        x: { title: { display: true, text: 'Week of' } },
+      },
+      plugins: {
+        legend: { display: false },
+      },
+    },
+  });
+}
+
+// Shows whether each exercise's working weight has gone up, stayed flat,
+// stalled (failed but not yet deloaded), or been deloaded over the last 4 weeks.
+function renderWeightTrends() {
+  const container = document.getElementById('weight-trends-list');
+  container.innerHTML = '';
+
+  const history = getValidHistory();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 28);
+
+  const keys = [...ORDER, ...Object.keys(state.customExercises || {})];
+
+  keys.forEach((key) => {
+    const meta = getExerciseMeta(key);
+    if (!meta) return;
+
+    const recent = history.filter((entry) => new Date(entry.date) >= cutoff && entry.results[key]);
+
+    let icon = '➡️';
+    let label = 'No recent data';
+    let cls = 'trend-flat';
+
+    if (recent.length > 0) {
+      const first = recent[0].results[key];
+      const last = recent[recent.length - 1].results[key];
+
+      if (last.weight > first.weight) {
+        icon = '⬆️';
+        label = 'Trending up';
+        cls = 'trend-up';
+      } else if (last.weight < first.weight) {
+        icon = '⬇️';
+        label = 'Deloaded';
+        cls = 'trend-down';
+      } else if (recent.some((entry) => entry.results[key].outcome === 'fail')) {
+        icon = '⏸️';
+        label = 'Stalled';
+        cls = 'trend-stalled';
+      } else {
+        icon = '➡️';
+        label = 'Flat';
+        cls = 'trend-flat';
+      }
+    }
+
+    const div = document.createElement('div');
+    div.className = 'trend-item';
+    div.innerHTML = `
+      <span class="trend-name">${meta.name}</span>
+      <span class="trend-indicator ${cls}">${icon} ${label}</span>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// Shows a deload card if the user hasn't logged a workout in 10+ days, with a
+// slider to preview and apply a deload across all exercises.
+function renderDeloadCard() {
+  const card = document.getElementById('deload-card');
+  const history = getValidHistory();
+
+  if (history.length === 0) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  const last = history[history.length - 1];
+  const daysAgo = Math.floor((Date.now() - new Date(last.date).getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysAgo < 10) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  card.classList.remove('hidden');
+  document.getElementById('deload-message').textContent =
+    `It's been ${daysAgo} days since your last workout. Consider easing back in with a deload.`;
+  updateDeloadPreview();
+}
+
+function updateDeloadPreview() {
+  const pct = parseInt(document.getElementById('deload-slider').value, 10);
+  document.getElementById('deload-pct-display').textContent = `${pct}%`;
+
+  const preview = document.getElementById('deload-preview');
+  preview.innerHTML = '';
+
+  [...ORDER, ...Object.keys(state.customExercises || {})].forEach((key) => {
+    const meta = getExerciseMeta(key);
+    const ex = state.exercises && state.exercises[key];
+    if (!meta || !ex) return;
+
+    const newWeight = roundWeight(ex.weight * (1 - pct / 100), state.unit);
+    const row = document.createElement('div');
+    row.className = 'history-exercise';
+    row.innerHTML = `
+      <span>${meta.name}</span>
+      <span>${ex.weight} ${state.unit} → ${newWeight} ${state.unit}</span>
+    `;
+    preview.appendChild(row);
+  });
+}
+
 // --- StrongLifts CSV import ---
 
 // Splits a CSV export into rows of { headerName: value }. Every field in the
@@ -742,7 +969,7 @@ function buildExportCsv() {
   getValidHistory().forEach((entry, index) => {
     const date = new Date(entry.date).toISOString().slice(0, 10).replace(/-/g, '/');
     const sessionNumber = index + 1;
-    const workoutName = `Workout ${entry.workout}`;
+    const workoutName = entry.workout === 'deload' ? 'Deload Day' : `Workout ${entry.workout}`;
     const bodyWeight = entry.bodyWeight !== undefined ? entry.bodyWeight : '';
 
     Object.keys(entry.results).forEach((key) => {
@@ -752,19 +979,23 @@ function buildExportCsv() {
       const increment = (state.exercises[key] && state.exercises[key].increment) || 0;
 
       // Estimate the weight actually used in this session, since the history only
-      // stores the weight to use *next* time for successes and deloads.
+      // stores the weight to use *next* time for successes and deloads. Deload Day
+      // entries are special - r.weight is the new (already-deloaded) weight itself.
       let weightUsed;
-      if (r.outcome === 'success') {
+      let repsHit;
+      if (entry.workout === 'deload') {
+        weightUsed = r.weight;
+        repsHit = 0;
+      } else if (r.outcome === 'success') {
         weightUsed = roundTo2(r.weight - increment);
+        repsHit = meta.reps;
       } else if (r.outcome === 'deload') {
         weightUsed = roundTo2(r.weight / (1 - meta.deloadPct));
+        repsHit = Math.max(meta.reps - 1, 0);
       } else {
         weightUsed = r.weight;
+        repsHit = Math.max(meta.reps - 1, 0);
       }
-
-      // Reps achieved isn't tracked per set, so approximate: full reps on success,
-      // one rep short on the last set otherwise.
-      const repsHit = r.outcome === 'success' ? meta.reps : Math.max(meta.reps - 1, 0);
 
       const row = [date, sessionNumber, workoutName, bodyWeight, meta.name];
       for (let s = 1; s <= 5; s++) {
@@ -819,10 +1050,11 @@ function buildHistoryFromCsv(rows) {
 
     if (!sessionsMap.has(sessionKey)) {
       const bodyWeight = parseFloat(row['Body Weight (LBS)']);
+      const workoutName = (row['Workout Name'] || '').trim();
       sessionsMap.set(sessionKey, {
         date,
         order: Number.isFinite(order) ? order : 0,
-        workout: (row['Workout Name'] || '').trim().endsWith('B') ? 'B' : 'A',
+        workout: workoutName === 'Deload Day' ? 'deload' : (workoutName.endsWith('B') ? 'B' : 'A'),
         exercises: {},
         bodyWeight: Number.isFinite(bodyWeight) ? bodyWeight : undefined,
       });
@@ -853,7 +1085,10 @@ function buildHistoryFromCsv(rows) {
 
   sessions.forEach((session) => {
     const results = {};
-    getWorkoutExercises(session.workout).forEach((key) => {
+    const exerciseKeys = session.workout === 'deload'
+      ? Object.keys(session.exercises)
+      : getWorkoutExercises(session.workout);
+    exerciseKeys.forEach((key) => {
       const data = session.exercises[key];
       if (!data) return;
 
@@ -894,7 +1129,8 @@ function buildHistoryFromCsv(rows) {
   });
 
   const lastBodyWeight = [...sessions].reverse().find((s) => s.bodyWeight !== undefined);
-  const lastWorkout = sessions.length ? sessions[sessions.length - 1].workout : null;
+  const lastAbWorkout = [...sessions].reverse().find((s) => s.workout === 'A' || s.workout === 'B');
+  const lastWorkout = lastAbWorkout ? lastAbWorkout.workout : null;
   return { history, lastWeight, failsTracker, lastWorkout, lastBodyWeight: lastBodyWeight ? lastBodyWeight.bodyWeight : undefined };
 }
 
@@ -1012,6 +1248,34 @@ document.getElementById('import-csv').addEventListener('change', (e) => {
   e.target.value = ''; // allow re-selecting the same file later
 });
 
+document.getElementById('start-workout-btn').addEventListener('click', () => {
+  renderHomeScreen();
+  showScreen('home');
+});
+
+document.getElementById('deload-slider').addEventListener('input', updateDeloadPreview);
+
+document.getElementById('confirm-deload-btn').addEventListener('click', () => {
+  const pct = parseInt(document.getElementById('deload-slider').value, 10);
+  if (!confirm(`Apply a ${pct}% deload to all exercises and log it as a Deload Day?`)) return;
+
+  const results = {};
+  [...ORDER, ...Object.keys(state.customExercises || {})].forEach((key) => {
+    const meta = getExerciseMeta(key);
+    const ex = state.exercises && state.exercises[key];
+    if (!meta || !ex) return;
+
+    const newWeight = roundWeight(ex.weight * (1 - pct / 100), state.unit);
+    ex.weight = newWeight;
+    ex.fails = 0;
+    results[key] = { outcome: 'deload', weight: newWeight, fails: 0, name: meta.name };
+  });
+
+  state.history.push({ date: new Date().toISOString(), workout: 'deload', results });
+  saveState(state);
+  renderDashboard();
+});
+
 document.getElementById('export-data-btn').addEventListener('click', () => {
   const csv = buildExportCsv();
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -1093,7 +1357,10 @@ document.getElementById('finish-btn').addEventListener('click', () => {
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const screen = btn.dataset.screen;
-    if (screen === 'home') {
+    if (screen === 'dashboard') {
+      renderDashboard();
+      showScreen('dashboard');
+    } else if (screen === 'home') {
       renderHomeScreen();
       showScreen('home');
     } else if (screen === 'progress') {
@@ -1160,8 +1427,8 @@ document.getElementById('timer-skip-btn').addEventListener('click', () => {
 async function init() {
   state = await loadState();
   if (state.setupComplete) {
-    renderHomeScreen();
-    showScreen('home');
+    renderDashboard();
+    showScreen('dashboard');
   } else {
     renderSetupForm(false);
     showScreen('setup');
