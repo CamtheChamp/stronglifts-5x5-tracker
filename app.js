@@ -588,8 +588,170 @@ const OUTCOME_LABELS = {
 
 let progressChart = null;
 let frequencyChart = null;
+let exerciseDetailChart = null;
 let progressRange = 'lifetime';
 let visibleExercises = new Set(['squat']);
+let showTrendLines = false;
+
+function getAllExerciseKeys() {
+  return [...ORDER, ...Object.keys(state.customExercises || {})];
+}
+
+// History only stores the weight to use *next* time for successes, and the new
+// (already-deloaded) weight for deloads. This recovers the weight actually used
+// in a given session - same logic as the CSV export.
+function getWeightUsed(entry, key) {
+  const r = entry.results[key];
+  if (!r) return null;
+  if (entry.workout === 'deload') return r.weight;
+
+  const meta = getExerciseMeta(key) || { deloadPct: 0.10 };
+  const increment = (state.exercises && state.exercises[key] && state.exercises[key].increment) || 0;
+
+  if (r.outcome === 'success') return roundTo2(r.weight - increment);
+  if (r.outcome === 'deload') return roundTo2(r.weight / (1 - meta.deloadPct));
+  return r.weight;
+}
+
+function formatShortDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatBigNumber(n) {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.round(n)}`;
+}
+
+// All-time PR (heaviest weight successfully completed) per exercise, with the date it was set.
+function computeAllTimePRs() {
+  const history = getValidHistory();
+  const prs = {};
+  history.forEach((entry) => {
+    Object.keys(entry.results).forEach((key) => {
+      const r = entry.results[key];
+      if (r.outcome !== 'success') return;
+      const weight = getWeightUsed(entry, key);
+      if (!prs[key] || weight > prs[key].weight) {
+        prs[key] = { weight, date: entry.date };
+      }
+    });
+  });
+  return prs;
+}
+
+// A streak is a run of A/B workouts spaced no more than 4 days apart (StrongLifts
+// is typically done 3x/week). The current streak resets to 0 if it's been more
+// than 4 days since the last workout.
+const STREAK_GAP_DAYS = 4;
+
+function computeStreaks() {
+  const history = getValidHistory().filter((entry) => entry.workout === 'A' || entry.workout === 'B');
+  if (history.length === 0) return { current: 0, longest: 0 };
+
+  let longest = 1;
+  let run = 1;
+  for (let i = 1; i < history.length; i++) {
+    const gapDays = (new Date(history[i].date) - new Date(history[i - 1].date)) / (1000 * 60 * 60 * 24);
+    run = gapDays <= STREAK_GAP_DAYS ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  }
+
+  const daysSinceLast = (Date.now() - new Date(history[history.length - 1].date).getTime()) / (1000 * 60 * 60 * 24);
+  const current = daysSinceLast <= STREAK_GAP_DAYS ? run : 0;
+
+  return { current, longest };
+}
+
+// Estimated total weight lifted all-time, using full sets x reps for successful
+// sessions and one rep short of that for missed/deload sessions.
+function computeTotalVolume() {
+  let total = 0;
+  getValidHistory().forEach((entry) => {
+    if (entry.workout === 'deload') return;
+    Object.keys(entry.results).forEach((key) => {
+      const r = entry.results[key];
+      const meta = getExerciseMeta(key);
+      if (!meta) return;
+      const weight = getWeightUsed(entry, key);
+      const reps = r.outcome === 'success' ? meta.reps : Math.max(meta.reps - 1, 0);
+      total += weight * meta.sets * reps;
+    });
+  });
+  return roundTo2(total);
+}
+
+function computeWorkoutCount() {
+  return getValidHistory().filter((entry) => entry.workout === 'A' || entry.workout === 'B').length;
+}
+
+// Per-exercise breakdown: full weight history, PR timeline, deload count, and
+// progression rate (average weight gain per month) for the detail view.
+function computeExerciseDetail(key) {
+  const history = getValidHistory().filter((entry) => entry.results[key]);
+  const meta = getExerciseMeta(key);
+
+  const points = history.map((entry) => ({
+    date: entry.date,
+    weight: getWeightUsed(entry, key),
+    outcome: entry.results[key].outcome,
+  }));
+
+  const prTimeline = [];
+  let maxWeight = -Infinity;
+  history.forEach((entry) => {
+    const r = entry.results[key];
+    if (r.outcome !== 'success') return;
+    const weight = getWeightUsed(entry, key);
+    if (weight > maxWeight) {
+      maxWeight = weight;
+      prTimeline.push({ date: entry.date, weight });
+    }
+  });
+
+  const deloadCount = history.filter((entry) => entry.results[key].outcome === 'deload').length;
+
+  let progressionRate = 0;
+  if (points.length >= 2) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    const months = Math.max((new Date(last.date) - new Date(first.date)) / (1000 * 60 * 60 * 24 * 30.44), 1 / 30.44);
+    progressionRate = (last.weight - first.weight) / months;
+  }
+
+  return { meta, points, prTimeline, deloadCount, progressionRate };
+}
+
+// Simple linear regression over the visible data points (x = index, y = weight),
+// used to draw an optional trend line per exercise.
+function computeTrendLineData(data) {
+  const points = data
+    .map((y, x) => ({ x, y }))
+    .filter((p) => p.y !== null && p.y !== undefined);
+  if (points.length < 2) return null;
+
+  const n = points.length;
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+  const sumXX = points.reduce((s, p) => s + p.x * p.x, 0);
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return null;
+
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return data.map((_, x) => slope * x + intercept);
+}
+
+function tileHtml(icon, value, label) {
+  return `
+    <div class="stat-tile">
+      <span class="stat-icon">${icon}</span>
+      <span class="stat-value">${value}</span>
+      <span class="stat-label">${label}</span>
+    </div>
+  `;
+}
 
 // Filters chart history down to the selected time range.
 function filterHistoryByRange(history) {
@@ -654,6 +816,8 @@ function renderHistoryScreen() {
 function renderProgressScreen() {
   const history = getValidHistory();
 
+  renderProgressStats();
+
   const chartCanvas = document.getElementById('progress-chart');
   const emptyMsg = document.getElementById('chart-empty-msg');
   if (typeof Chart === 'undefined') {
@@ -669,6 +833,10 @@ function renderProgressScreen() {
 
   const chartHistory = filterHistoryByRange(history);
 
+  const customKeys = Object.keys(state.customExercises || {});
+  const chartKeys = [...ORDER, ...customKeys, 'bodyWeight'];
+  renderExercisePills(chartKeys, customKeys);
+
   if (chartHistory.length === 0) {
     chartCanvas.classList.add('hidden');
     emptyMsg.classList.remove('hidden');
@@ -677,10 +845,7 @@ function renderProgressScreen() {
   chartCanvas.classList.remove('hidden');
   emptyMsg.classList.add('hidden');
 
-  const customKeys = Object.keys(state.customExercises || {});
-  const chartKeys = [...ORDER, ...customKeys, 'bodyWeight'];
-
-  const labels = chartHistory.map((entry) => new Date(entry.date).toLocaleDateString());
+  const labels = chartHistory.map((entry) => formatShortDate(entry.date));
   const datasets = chartKeys.map((key) => {
     const isBodyWeight = key === 'bodyWeight';
     const customIndex = customKeys.indexOf(key);
@@ -691,7 +856,7 @@ function renderProgressScreen() {
       label: isBodyWeight ? `Body Weight (${state.unit})` : getExerciseMeta(key).name,
       data: chartHistory.map((entry) => {
         if (isBodyWeight) return entry.bodyWeight !== undefined ? entry.bodyWeight : null;
-        return entry.results[key] ? entry.results[key].weight : null;
+        return entry.results[key] ? getWeightUsed(entry, key) : null;
       }),
       borderColor: color,
       backgroundColor: color,
@@ -701,33 +866,220 @@ function renderProgressScreen() {
     };
   });
 
+  if (showTrendLines) {
+    chartKeys.forEach((key, index) => {
+      if (!visibleExercises.has(key)) return;
+      const trendData = computeTrendLineData(datasets[index].data);
+      if (!trendData) return;
+      datasets.push({
+        label: `${datasets[index].label} Trend`,
+        data: trendData,
+        borderColor: datasets[index].borderColor,
+        backgroundColor: 'transparent',
+        borderDash: [6, 6],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        tension: 0,
+      });
+    });
+  }
+
   progressChart = new Chart(chartCanvas.getContext('2d'), {
     type: 'line',
     data: { labels, datasets },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       scales: {
         y: { title: { display: true, text: `Weight (${state.unit})` } },
-        x: { title: { display: true, text: 'Date' } },
+        x: {
+          title: { display: true, text: 'Date' },
+          ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 8 },
+        },
       },
       plugins: {
-        legend: {
-          onClick: (e, legendItem, legend) => {
-            const chart = legend.chart;
-            const index = legendItem.datasetIndex;
-            const key = chartKeys[index];
-            if (chart.isDatasetVisible(index)) {
-              chart.hide(index);
-              visibleExercises.delete(key);
-            } else {
-              chart.show(index);
-              visibleExercises.add(key);
-            }
+        legend: { display: false },
+        zoom: {
+          pan: { enabled: true, mode: 'x' },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x',
           },
+          limits: { x: { minRange: 2 } },
         },
+      },
+      onClick: (evt) => {
+        const points = progressChart.getElementsAtEventForMode(evt, 'nearest', { intersect: false, axis: 'x' }, true);
+        if (!points.length) return;
+        const { datasetIndex, index } = points[0];
+        if (datasetIndex >= chartKeys.length) return; // trend line dataset
+        const entry = chartHistory[index];
+        if (entry) openDataPointModal(entry);
       },
     },
   });
+}
+
+// Renders the achievement-tile stats grid: streaks, total volume, workout
+// count, and an all-time PR tile per exercise.
+function renderProgressStats() {
+  const grid = document.getElementById('stats-grid');
+
+  const prs = computeAllTimePRs();
+  const streaks = computeStreaks();
+  const totalVolume = computeTotalVolume();
+  const workoutCount = computeWorkoutCount();
+
+  const tiles = [
+    tileHtml('🔥', `${streaks.current}`, 'Current Streak'),
+    tileHtml('🏆', `${streaks.longest}`, 'Longest Streak'),
+    tileHtml('🏋', `${formatBigNumber(totalVolume)}`, `${state.unit} Lifted (All-Time)`),
+    tileHtml('⚔️', `${workoutCount}`, 'Workouts Completed'),
+  ];
+
+  getAllExerciseKeys().forEach((key) => {
+    const meta = getExerciseMeta(key);
+    const pr = prs[key];
+    if (!meta || !pr) return;
+    tiles.push(tileHtml('👑', `${pr.weight} ${state.unit}`, `${meta.name} PR - ${new Date(pr.date).toLocaleDateString()}`));
+  });
+
+  grid.innerHTML = tiles.join('');
+}
+
+// Renders the large, touch-friendly exercise toggle pills below the chart.
+// Tapping the pill toggles that line's visibility; the info button opens the
+// exercise's detail view.
+function renderExercisePills(chartKeys, customKeys) {
+  const container = document.getElementById('exercise-pills');
+  container.innerHTML = '';
+
+  chartKeys.forEach((key) => {
+    const isBodyWeight = key === 'bodyWeight';
+    const customIndex = customKeys.indexOf(key);
+    const color = isBodyWeight
+      ? CHART_COLORS.bodyWeight
+      : CHART_COLORS[key] || CUSTOM_CHART_COLORS[customIndex % CUSTOM_CHART_COLORS.length];
+    const name = isBodyWeight ? 'Body Weight' : getExerciseMeta(key).name;
+    const active = visibleExercises.has(key);
+
+    const pill = document.createElement('div');
+    pill.className = `exercise-pill ${active ? 'active' : ''}`;
+    pill.style.setProperty('--pill-color', color);
+    pill.innerHTML = `
+      <button class="pill-toggle" data-key="${key}" type="button">${name}</button>
+      ${isBodyWeight ? '' : `<button class="pill-info" data-key="${key}" type="button" aria-label="${name} details">ⓘ</button>`}
+    `;
+    container.appendChild(pill);
+  });
+}
+
+// Tap-a-data-point popup: shows the full results for that session.
+function openDataPointModal(entry) {
+  const date = new Date(entry.date).toLocaleDateString();
+  const title = entry.workout === 'deload' ? 'Deload Day' : `Workout ${entry.workout}`;
+
+  const rows = Object.keys(entry.results)
+    .map((key) => {
+      const r = entry.results[key];
+      const meta = getExerciseMeta(key);
+      const name = (meta && meta.name) || r.name || key;
+      const label = r.outcome === 'fail' ? `${OUTCOME_LABELS.fail} (${r.fails}/3)` : OUTCOME_LABELS[r.outcome];
+      const weightUsed = getWeightUsed(entry, key);
+      return `
+        <div class="history-exercise">
+          <span>${name}</span>
+          <span class="tag ${r.outcome}">${label}</span>
+          <span>${weightUsed} ${state.unit}</span>
+        </div>
+      `;
+    })
+    .join('');
+
+  const bodyWeightRow = entry.bodyWeight !== undefined
+    ? `
+      <div class="history-exercise">
+        <span>Body Weight</span>
+        <span>${entry.bodyWeight} ${state.unit}</span>
+      </div>
+    `
+    : '';
+
+  document.getElementById('datapoint-title').textContent = `${date} - ${title}`;
+  document.getElementById('datapoint-body').innerHTML = rows + bodyWeightRow;
+  document.getElementById('datapoint-modal').classList.remove('hidden');
+}
+
+// Exercise breakdown detail view: full weight history chart, PR timeline,
+// deload count, and progression rate.
+function openExerciseDetailModal(key) {
+  const detail = computeExerciseDetail(key);
+  const meta = detail.meta;
+
+  document.getElementById('exercise-detail-title').textContent = meta.name;
+
+  const rateValue = detail.progressionRate >= 0
+    ? `+${detail.progressionRate.toFixed(2)}`
+    : detail.progressionRate.toFixed(2);
+
+  document.getElementById('exercise-detail-stats').innerHTML = [
+    tileHtml('📈', `${rateValue} ${state.unit}`, 'Progression / Month'),
+    tileHtml('⚠️', `${detail.deloadCount}`, 'Times Deloaded'),
+  ].join('');
+
+  if (exerciseDetailChart) {
+    exerciseDetailChart.destroy();
+    exerciseDetailChart = null;
+  }
+
+  const canvas = document.getElementById('exercise-detail-chart');
+  if (typeof Chart !== 'undefined' && detail.points.length > 0) {
+    canvas.classList.remove('hidden');
+    const customIndex = Object.keys(state.customExercises || {}).indexOf(key);
+    const color = CHART_COLORS[key] || CUSTOM_CHART_COLORS[customIndex % CUSTOM_CHART_COLORS.length];
+
+    exerciseDetailChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: detail.points.map((p) => formatShortDate(p.date)),
+        datasets: [{
+          label: meta.name,
+          data: detail.points.map((p) => p.weight),
+          borderColor: color,
+          backgroundColor: color,
+          spanGaps: true,
+          tension: 0.2,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 6 } },
+          y: { title: { display: true, text: `Weight (${state.unit})` } },
+        },
+        plugins: { legend: { display: false } },
+      },
+    });
+  } else {
+    canvas.classList.add('hidden');
+  }
+
+  const prList = document.getElementById('exercise-detail-pr-list');
+  if (detail.prTimeline.length === 0) {
+    prList.innerHTML = '<p class="hint">No PRs recorded yet.</p>';
+  } else {
+    prList.innerHTML = [...detail.prTimeline].reverse().map((pr) => `
+      <div class="history-exercise">
+        <span>${new Date(pr.date).toLocaleDateString()}</span>
+        <span class="weight">${pr.weight} ${state.unit}</span>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('exercise-detail-modal').classList.remove('hidden');
 }
 
 // --- Dashboard ---
@@ -1309,6 +1661,44 @@ document.querySelectorAll('.range-btn').forEach((btn) => {
     document.querySelectorAll('.range-btn').forEach((b) => b.classList.toggle('active', b === btn));
     renderProgressScreen();
   });
+});
+
+document.getElementById('exercise-pills').addEventListener('click', (e) => {
+  const toggleBtn = e.target.closest('.pill-toggle');
+  const infoBtn = e.target.closest('.pill-info');
+
+  if (toggleBtn) {
+    const key = toggleBtn.dataset.key;
+    if (visibleExercises.has(key)) {
+      visibleExercises.delete(key);
+    } else {
+      visibleExercises.add(key);
+    }
+    renderProgressScreen();
+    return;
+  }
+
+  if (infoBtn) {
+    openExerciseDetailModal(infoBtn.dataset.key);
+  }
+});
+
+document.getElementById('trend-toggle-btn').addEventListener('click', (e) => {
+  showTrendLines = !showTrendLines;
+  e.target.classList.toggle('active', showTrendLines);
+  renderProgressScreen();
+});
+
+document.getElementById('reset-zoom-btn').addEventListener('click', () => {
+  if (progressChart) progressChart.resetZoom();
+});
+
+document.getElementById('datapoint-close-btn').addEventListener('click', () => {
+  document.getElementById('datapoint-modal').classList.add('hidden');
+});
+
+document.getElementById('exercise-detail-close-btn').addEventListener('click', () => {
+  document.getElementById('exercise-detail-modal').classList.add('hidden');
 });
 
 document.querySelectorAll('.workout-select-btn').forEach((btn) => {

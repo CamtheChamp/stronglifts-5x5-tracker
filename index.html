@@ -186,8 +186,21 @@
         <button class="range-btn" data-range="year" type="button">Last Year</button>
         <button class="range-btn active" data-range="lifetime" type="button">Lifetime</button>
       </div>
-      <canvas id="progress-chart" height="200"></canvas>
+
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <div class="chart-toolbar">
+        <button id="trend-toggle-btn" class="pill-toggle-btn" type="button">Trend Lines</button>
+        <button id="reset-zoom-btn" class="pill-toggle-btn" type="button">Reset Zoom</button>
+      </div>
+
+      <div class="chart-wrap">
+        <canvas id="progress-chart"></canvas>
+      </div>
       <p id="chart-empty-msg" class="hint hidden">No workouts logged in this range.</p>
+      <p class="hint chart-hint">Pinch or scroll to zoom, drag to pan. Tap a point for details.</p>
+
+      <div class="exercise-pills" id="exercise-pills"></div>
     </section>
 
     <section id="history-screen" class="screen hidden">
@@ -201,6 +214,27 @@
       <h2>🏆 Victory!</h2>
       <div id="congrats-body"></div>
       <button id="congrats-close-btn" class="primary-btn" type="button">Nice!</button>
+    </div>
+  </div>
+
+  <div id="datapoint-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <h2 id="datapoint-title"></h2>
+      <div id="datapoint-body"></div>
+      <button id="datapoint-close-btn" class="primary-btn" type="button">Close</button>
+    </div>
+  </div>
+
+  <div id="exercise-detail-modal" class="modal-overlay hidden">
+    <div class="modal-card wide">
+      <h2 id="exercise-detail-title"></h2>
+      <div class="stats-grid" id="exercise-detail-stats"></div>
+      <div class="chart-wrap small">
+        <canvas id="exercise-detail-chart"></canvas>
+      </div>
+      <h3>PR Timeline</h3>
+      <div id="exercise-detail-pr-list"></div>
+      <button id="exercise-detail-close-btn" class="primary-btn" type="button">Close</button>
     </div>
   </div>
 
@@ -239,6 +273,8 @@
   </nav>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
