@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sl5x5-cache-v8';
+const CACHE_NAME = 'sl5x5-cache-v9';
 
 const PRECACHE_ASSETS = [
   './',
@@ -6,6 +6,7 @@ const PRECACHE_ASSETS = [
   './style.css',
   './app.js',
   './manifest.json',
+  './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
