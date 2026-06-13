@@ -1,5 +1,9 @@
 const STORAGE_KEY = 'sl5x5_state';
 
+// Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
+// currently loaded - handy for confirming an update actually took effect.
+const APP_VERSION = 'v17';
+
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
 // SQL editor, enable the Google auth provider, and fill in these two values with
@@ -947,7 +951,22 @@ function renderHistoryScreen() {
 
     const card = document.createElement('div');
     card.className = 'history-card';
-    card.innerHTML = `<h4>${date} - ${title}</h4>${rows}${bodyWeightRow}`;
+    card.innerHTML = `
+      <div class="history-card-header">
+        <h4>${date} - ${title}</h4>
+        <button class="history-delete-btn" type="button" aria-label="Delete this workout">Delete</button>
+      </div>
+      ${rows}${bodyWeightRow}
+    `;
+    card.querySelector('.history-delete-btn').addEventListener('click', () => {
+      if (!confirm(`Delete the ${date} - ${title} workout? This can't be undone.`)) return;
+      const index = state.history.indexOf(entry);
+      if (index !== -1) {
+        state.history.splice(index, 1);
+        saveState(state);
+      }
+      renderHistoryScreen();
+    });
     historyContainer.appendChild(card);
   });
 }
@@ -1963,6 +1982,7 @@ document.getElementById('timer-skip-btn').addEventListener('click', () => {
 // --- Init ---
 
 async function init() {
+  document.getElementById('app-version').textContent = `Version ${APP_VERSION}`;
   state = await loadState();
   if (state.setupComplete) {
     renderDashboard();
