@@ -293,6 +293,14 @@ function initAuth() {
       syncStateWithCloud();
     }
   });
+
+  // Re-check the cloud whenever the app comes back to the foreground, so changes
+  // made on another device while this one was open/backgrounded get pulled in.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && currentUser) {
+      syncStateWithCloud();
+    }
+  });
 }
 
 // Assumes a standard barbell. Plate inventory (how many of each plate the user owns) is
