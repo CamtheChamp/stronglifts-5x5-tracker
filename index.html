@@ -102,6 +102,20 @@
       </div>
 
       <div class="settings-tab-panel import-section hidden" data-tab="data">
+        <div id="cloud-sync-section" class="account-section hidden">
+          <h3>Cloud Sync</h3>
+          <p class="hint">
+            Sign in with Google to back up your data and sync it across devices.
+          </p>
+          <div id="account-signed-out">
+            <button id="google-signin-btn" class="secondary-btn" type="button">Sign in with Google</button>
+          </div>
+          <div id="account-signed-in" class="hidden">
+            <p class="hint" id="account-email"></p>
+            <button id="sign-out-btn" class="secondary-btn" type="button">Sign Out</button>
+          </div>
+        </div>
+
         <h3>Export Your Data</h3>
         <p class="hint">
           Download your workout history as a CSV file, which you can open in Excel or
@@ -275,6 +289,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>

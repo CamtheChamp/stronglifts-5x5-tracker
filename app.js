@@ -1,5 +1,21 @@
 const STORAGE_KEY = 'sl5x5_state';
 
+// --- Cloud sync (Supabase) ---
+// To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
+// SQL editor, enable the Google auth provider, and fill in these two values with
+// your project's URL and anon public key (Project Settings > API). Both values are
+// meant to be public/client-side; access is controlled by the row-level security
+// policies in supabase/schema.sql.
+const SUPABASE_URL = 'https://qonhadvvgfegdituotbw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvbmhhZHZ2Z2ZlZ2RpdHVvdGJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzNjQxNzIsImV4cCI6MjA5Njk0MDE3Mn0.V49zKuX7wOZ8Ge6vomDTh6z-S-fNMO3fazu9A2CGflg';
+
+const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined')
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+let currentUser = null;
+let cloudSyncTimer = null;
+
 // Order matters for the setup form and matches how exercises appear in each workout.
 const ORDER = ['squat', 'bench', 'row', 'ohp', 'deadlift'];
 
@@ -150,18 +166,132 @@ async function loadState() {
   return defaultState();
 }
 
-async function saveState(state) {
+async function persistToIndexedDb(stateToSave) {
   try {
     const db = await openDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put(state, STATE_KEY);
+      tx.objectStore(STORE_NAME).put(stateToSave, STATE_KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   } catch (e) {
     // IndexedDB unavailable - data won't persist, but the app keeps working for this session.
   }
+}
+
+async function saveState(state) {
+  state.updatedAt = new Date().toISOString();
+  await persistToIndexedDb(state);
+  scheduleCloudSync();
+}
+
+// --- Cloud sync ---
+
+function scheduleCloudSync() {
+  if (!sb || !currentUser) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(() => pushStateToCloud(), 1500);
+}
+
+async function pushStateToCloud() {
+  if (!sb || !currentUser) return;
+  try {
+    await sb.from('user_state').upsert({
+      user_id: currentUser.id,
+      state,
+      updated_at: state.updatedAt,
+    });
+  } catch (e) {
+    // Offline or request failed - the next save will retry.
+  }
+}
+
+// Pulls the latest saved state from another device (if newer) or pushes the
+// current local state to the cloud (if it's newer or nothing is saved yet).
+async function syncStateWithCloud() {
+  if (!sb || !currentUser) return;
+  try {
+    const { data, error } = await sb
+      .from('user_state')
+      .select('state, updated_at')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    if (error) throw error;
+
+    const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
+    const remoteUpdatedAt = data ? new Date(data.updated_at).getTime() : 0;
+
+    if (data && remoteUpdatedAt > localUpdatedAt) {
+      state = data.state;
+      await persistToIndexedDb(state);
+      refreshAllScreens();
+    } else if (!data || localUpdatedAt > remoteUpdatedAt) {
+      await pushStateToCloud();
+    }
+  } catch (e) {
+    // Offline or request failed - sync will retry on the next sign-in or save.
+  }
+}
+
+// Re-renders whichever screen is currently visible, used after pulling a newer
+// state from the cloud.
+function refreshAllScreens() {
+  const active = document.querySelector('.nav-btn.active');
+  const screen = active ? active.dataset.screen : 'dashboard';
+  if (screen === 'home') {
+    renderHomeScreen();
+    showScreen('home');
+  } else if (screen === 'progress') {
+    renderProgressScreen();
+    showScreen('progress');
+  } else if (screen === 'history') {
+    renderHistoryScreen();
+    showScreen('history');
+  } else if (state.setupComplete) {
+    renderDashboard();
+    showScreen('dashboard');
+  } else {
+    renderSetupForm(false);
+    showScreen('setup');
+  }
+}
+
+function updateAccountUI() {
+  const section = document.getElementById('cloud-sync-section');
+  if (!section) return;
+  document.getElementById('account-signed-out').classList.toggle('hidden', !!currentUser);
+  document.getElementById('account-signed-in').classList.toggle('hidden', !currentUser);
+  if (currentUser) {
+    document.getElementById('account-email').textContent = `Signed in as ${currentUser.email}`;
+  }
+}
+
+function initAuth() {
+  const section = document.getElementById('cloud-sync-section');
+  if (!sb) {
+    if (section) section.classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('google-signin-btn').addEventListener('click', async () => {
+    await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+  });
+
+  document.getElementById('sign-out-btn').addEventListener('click', async () => {
+    await sb.auth.signOut();
+  });
+
+  sb.auth.onAuthStateChange((event, session) => {
+    currentUser = session ? session.user : null;
+    updateAccountUI();
+    if (currentUser) {
+      syncStateWithCloud();
+    }
+  });
 }
 
 // Assumes a standard barbell. Plate inventory (how many of each plate the user owns) is
@@ -1832,6 +1962,7 @@ async function init() {
     renderSetupForm(false);
     showScreen('setup');
   }
+  initAuth();
 }
 
 init();

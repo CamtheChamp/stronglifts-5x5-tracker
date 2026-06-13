@@ -289,6 +289,27 @@ input[type="radio"] {
   margin: 0 0 8px;
 }
 
+.account-section {
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+  border-top: none;
+  border-bottom: 1px solid rgba(201, 168, 76, 0.25);
+}
+
+.account-section h3 {
+  margin: 0 0 8px;
+}
+
+.account-section .secondary-btn {
+  margin-top: 8px;
+}
+
+#account-email {
+  word-break: break-all;
+}
+
 .import-label {
   display: block;
   text-align: center;
