@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sl5x5-cache-v5';
+const CACHE_NAME = 'sl5x5-cache-v6';
 
 const PRECACHE_ASSETS = [
   './',

@@ -440,6 +440,7 @@ function selectWorkout(workoutKey) {
 }
 
 function renderHomeScreen() {
+  if (!state.exercises) return;
   ensureSession();
 
   document.getElementById('workout-title').textContent = `Workout ${state.session.workout}`;
