@@ -273,6 +273,7 @@ function initAuth() {
     if (section) section.classList.add('hidden');
     return;
   }
+  if (section) section.classList.remove('hidden');
 
   document.getElementById('google-signin-btn').addEventListener('click', async () => {
     await sb.auth.signInWithOAuth({
