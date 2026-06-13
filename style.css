@@ -265,6 +265,34 @@ h1 {
   margin: 8px 0 0;
 }
 
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  font-size: 0.9rem;
+  z-index: 200;
+}
+
+#update-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  background: white;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .rest-timer-bar {
   position: fixed;
   bottom: 56px;

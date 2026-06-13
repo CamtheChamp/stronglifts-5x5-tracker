@@ -1170,8 +1170,50 @@ async function init() {
 
 init();
 
+// --- Service worker update handling ---
+
+function showUpdateBanner(worker) {
+  const banner = document.getElementById('update-banner');
+  banner.classList.remove('hidden');
+  document.getElementById('update-btn').onclick = () => {
+    worker.postMessage('SKIP_WAITING');
+    banner.classList.add('hidden');
+  };
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((registration) => {
+      // A worker may already be waiting from a previous visit (e.g. if the
+      // user didn't tap "update" last time).
+      if (registration.waiting) {
+        showUpdateBanner(registration.waiting);
+      }
+
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBanner(newWorker);
+          }
+        });
+      });
+
+      // Check for a fresh service worker whenever the app is reopened/foregrounded.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update().catch(() => {});
+        }
+      });
+    }).catch(() => {});
+  });
+
+  // Once the new worker takes over, reload so the page picks up the new assets.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
 }
