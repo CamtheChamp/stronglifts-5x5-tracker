@@ -797,7 +797,7 @@ function renderHistoryScreen() {
 
     const bodyWeightRow = entry.bodyWeight !== undefined
       ? `
-        <div class="history-exercise">
+        <div class="history-exercise history-row-2col">
           <span>Body Weight</span>
           <span>${entry.bodyWeight} ${state.unit}</span>
         </div>
@@ -1072,7 +1072,7 @@ function openExerciseDetailModal(key) {
     prList.innerHTML = '<p class="hint">No PRs recorded yet.</p>';
   } else {
     prList.innerHTML = [...detail.prTimeline].reverse().map((pr) => `
-      <div class="history-exercise">
+      <div class="history-exercise history-row-2col">
         <span>${new Date(pr.date).toLocaleDateString()}</span>
         <span class="weight">${pr.weight} ${state.unit}</span>
       </div>
@@ -1296,7 +1296,7 @@ function updateDeloadPreview() {
 
     const newWeight = roundWeight(ex.weight * (1 - pct / 100), state.unit);
     const row = document.createElement('div');
-    row.className = 'history-exercise';
+    row.className = 'history-exercise history-row-2col';
     row.innerHTML = `
       <span>${meta.name}</span>
       <span>${ex.weight} ${state.unit} → ${newWeight} ${state.unit}</span>
