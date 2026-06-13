@@ -1838,12 +1838,25 @@ init();
 
 // --- Service worker update handling ---
 
+// Once the new worker takes over, reload so the page picks up the new assets.
+let refreshing = false;
+
+function reloadForUpdate() {
+  if (refreshing) return;
+  refreshing = true;
+  window.location.reload();
+}
+
 function showUpdateBanner(worker) {
   const banner = document.getElementById('update-banner');
   banner.classList.remove('hidden');
   document.getElementById('update-btn').onclick = () => {
     worker.postMessage('SKIP_WAITING');
     banner.classList.add('hidden');
+    // controllerchange should fire and trigger the reload, but some mobile
+    // browsers don't reliably deliver it after a postMessage-triggered
+    // skipWaiting, so fall back to a timed reload either way.
+    setTimeout(reloadForUpdate, 750);
   };
 }
 
@@ -1875,11 +1888,5 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 
-  // Once the new worker takes over, reload so the page picks up the new assets.
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
+  navigator.serviceWorker.addEventListener('controllerchange', reloadForUpdate);
 }
