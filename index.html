@@ -4,10 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StrongLifts 5x5 Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#15110d">
 
   <!-- iOS home screen support -->
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -19,6 +22,7 @@
   <div id="app">
     <header>
       <h1>5x5 Tracker</h1>
+      <p class="tagline">Forge Your Strength</p>
     </header>
 
     <section id="setup-screen" class="screen hidden">
@@ -192,7 +196,7 @@
 
   <div id="congrats-modal" class="modal-overlay hidden">
     <div class="modal-card">
-      <h2>🎉 Great Workout!</h2>
+      <h2>🏆 Victory!</h2>
       <div id="congrats-body"></div>
       <button id="congrats-close-btn" class="primary-btn" type="button">Nice!</button>
     </div>
@@ -211,7 +215,7 @@
 
   <nav id="bottom-nav" class="bottom-nav hidden">
     <button class="nav-btn" data-screen="dashboard" type="button">
-      <span class="nav-icon">🏠</span>
+      <span class="nav-icon">🏛</span>
       <span class="nav-label">Dashboard</span>
     </button>
     <button class="nav-btn" data-screen="home" type="button">

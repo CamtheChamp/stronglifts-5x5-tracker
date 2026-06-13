@@ -561,16 +561,24 @@ document.getElementById('congrats-close-btn').addEventListener('click', () => {
 });
 
 const CHART_COLORS = {
-  squat: '#2563eb',
-  bench: '#16a34a',
-  row: '#f59e0b',
-  ohp: '#a855f7',
-  deadlift: '#ef4444',
-  bodyWeight: '#64748b',
+  squat: '#c9a84c',
+  bench: '#e8c873',
+  row: '#d98c2b',
+  ohp: '#8a6b32',
+  deadlift: '#c0392b',
+  bodyWeight: '#a8957a',
 };
 
 // Colors for custom exercises, assigned in the order they were added.
-const CUSTOM_CHART_COLORS = ['#0ea5e9', '#84cc16', '#ec4899', '#f97316', '#14b8a6', '#8b5cf6', '#eab308', '#06b6d4'];
+const CUSTOM_CHART_COLORS = ['#e0b84a', '#b5862f', '#d4a373', '#9c7a3a', '#cf6b4a', '#a3753c', '#e6c07b', '#7a5c2e'];
+
+// Theme Chart.js for the dark gladiator UI so axis labels, grid lines, and
+// legends remain legible against the dark backgrounds.
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#a8957a';
+  Chart.defaults.borderColor = 'rgba(201, 168, 76, 0.15)';
+  Chart.defaults.font.family = "'Oswald', sans-serif";
+}
 
 const OUTCOME_LABELS = {
   success: 'Success',
@@ -826,7 +834,7 @@ function renderFrequencyChart() {
       datasets: [{
         label: 'Workouts',
         data,
-        backgroundColor: '#2563eb',
+        backgroundColor: '#c9a84c',
       }],
     },
     options: {
