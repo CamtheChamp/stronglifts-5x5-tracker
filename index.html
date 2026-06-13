@@ -27,6 +27,7 @@
       <div class="settings-tabs">
         <button class="settings-tab-btn active" data-tab="weights" type="button">Weights</button>
         <button class="settings-tab-btn" data-tab="plates" type="button">Plates</button>
+        <button class="settings-tab-btn" data-tab="exercises" type="button">Exercises</button>
         <button class="settings-tab-btn" data-tab="data" type="button">Data</button>
       </div>
 
@@ -50,6 +51,49 @@
 
         <button type="submit" class="primary-btn">Save & Start</button>
       </form>
+
+      <div class="settings-tab-panel hidden" data-tab="exercises">
+        <h3>Custom Exercises</h3>
+        <p class="hint">
+          Add extra exercises to track in Workout A or B. Each gets its own working weight,
+          progression, and history, just like the built-in exercises.
+        </p>
+        <div id="custom-exercise-list"></div>
+
+        <h3>Add New Exercise</h3>
+        <div class="field">
+          <label for="custom-ex-name">Name</label>
+          <input type="text" id="custom-ex-name" placeholder="e.g. Bicep Curl">
+        </div>
+        <div class="field">
+          <label for="custom-ex-workout">Add to</label>
+          <select id="custom-ex-workout">
+            <option value="A">Workout A</option>
+            <option value="B">Workout B</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="custom-ex-sets">Sets</label>
+          <input type="number" id="custom-ex-sets" min="1" max="5" value="5">
+        </div>
+        <div class="field">
+          <label for="custom-ex-reps">Reps per set</label>
+          <input type="number" id="custom-ex-reps" min="1" max="20" value="5">
+        </div>
+        <div class="field">
+          <label for="custom-ex-weight" id="custom-ex-weight-label">Starting weight</label>
+          <input type="number" id="custom-ex-weight" min="0" step="2.5" value="45">
+        </div>
+        <div class="field">
+          <label for="custom-ex-increment" id="custom-ex-increment-label">Weight increase on success</label>
+          <input type="number" id="custom-ex-increment" min="0" step="0.5" value="5">
+        </div>
+        <div class="field">
+          <label for="custom-ex-deload">Deload percentage after 3 misses (%)</label>
+          <input type="number" id="custom-ex-deload" min="0" max="50" value="10">
+        </div>
+        <button id="add-custom-exercise-btn" class="secondary-btn" type="button">Add Exercise</button>
+      </div>
 
       <div class="settings-tab-panel import-section hidden" data-tab="data">
         <h3>Export Your Data</h3>

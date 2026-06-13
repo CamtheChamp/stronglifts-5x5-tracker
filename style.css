@@ -125,6 +125,34 @@ h1 {
   color: white;
 }
 
+.custom-exercise-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.custom-exercise-item:last-child {
+  border-bottom: none;
+}
+
+.custom-exercise-item span {
+  font-size: 0.9rem;
+}
+
+.remove-custom-ex-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #ef4444;
+  background: white;
+  color: #ef4444;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .import-section {
   margin-top: 24px;
   padding-top: 16px;

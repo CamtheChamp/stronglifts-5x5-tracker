@@ -54,7 +54,33 @@ function defaultState() {
     session: null,
     history: [],
     plateInventory: defaultPlateInventory(),
+    customExercises: {},
   };
+}
+
+// Custom exercises added by the user are stored in state.customExercises, keyed by a
+// generated id, and behave like the built-in exercises (their own weight, progression,
+// and history). These helpers let the rest of the app treat built-in and custom
+// exercises the same way.
+function getExerciseMeta(key) {
+  return EXERCISES[key] || (state.customExercises && state.customExercises[key]);
+}
+
+function getWorkoutExercises(workoutKey) {
+  const custom = Object.keys(state.customExercises || {}).filter(
+    (key) => state.customExercises[key].workout === workoutKey
+  );
+  return [...WORKOUTS[workoutKey], ...custom];
+}
+
+// Combines the built-in exercise name map with custom exercise names, so CSV
+// import/export can round-trip custom exercises too.
+function getImportExerciseMap() {
+  const map = { ...IMPORT_EXERCISE_MAP };
+  Object.keys(state.customExercises || {}).forEach((key) => {
+    map[state.customExercises[key].name] = key;
+  });
+  return map;
 }
 
 // --- IndexedDB persistence ---
@@ -93,6 +119,9 @@ async function loadState() {
       if (!stored.plateInventory) {
         stored.plateInventory = defaultPlateInventory();
       }
+      if (!stored.customExercises) {
+        stored.customExercises = {};
+      }
       return stored;
     }
   } catch (e) {
@@ -106,6 +135,9 @@ async function loadState() {
       const migrated = JSON.parse(raw);
       if (!migrated.plateInventory) {
         migrated.plateInventory = defaultPlateInventory();
+      }
+      if (!migrated.customExercises) {
+        migrated.customExercises = {};
       }
       await saveState(migrated);
       localStorage.removeItem(STORAGE_KEY);
@@ -218,7 +250,98 @@ function showSettingsTab(tab) {
   document.querySelectorAll('.settings-tab-panel').forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.tab !== tab);
   });
+  if (tab === 'exercises') {
+    renderCustomExercisesPanel();
+  }
 }
+
+// --- Custom exercises ---
+
+function renderCustomExercisesPanel() {
+  document.getElementById('custom-ex-weight-label').textContent = `Starting weight (${state.unit})`;
+  document.getElementById('custom-ex-increment-label').textContent = `Weight increase on success (${state.unit})`;
+  renderCustomExerciseList();
+}
+
+function renderCustomExerciseList() {
+  const container = document.getElementById('custom-exercise-list');
+  container.innerHTML = '';
+  const keys = Object.keys(state.customExercises || {});
+
+  if (keys.length === 0) {
+    container.innerHTML = '<p class="hint">No custom exercises yet.</p>';
+    return;
+  }
+
+  keys.forEach((key) => {
+    const meta = state.customExercises[key];
+    const ex = state.exercises && state.exercises[key];
+    const weightText = ex ? `${ex.weight} ${state.unit}` : '';
+    const div = document.createElement('div');
+    div.className = 'custom-exercise-item';
+    div.innerHTML = `
+      <span>${meta.name} (Workout ${meta.workout}) - ${weightText}</span>
+      <button class="remove-custom-ex-btn" data-key="${key}" type="button">Remove</button>
+    `;
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('add-custom-exercise-btn').addEventListener('click', () => {
+  const name = document.getElementById('custom-ex-name').value.trim();
+  if (!name) {
+    alert('Please enter a name for the exercise.');
+    return;
+  }
+
+  const workout = document.getElementById('custom-ex-workout').value;
+  const sets = Math.min(Math.max(parseInt(document.getElementById('custom-ex-sets').value, 10) || 1, 1), 5);
+  const reps = Math.max(parseInt(document.getElementById('custom-ex-reps').value, 10) || 1, 1);
+  const weight = parseFloat(document.getElementById('custom-ex-weight').value) || 0;
+  const increment = parseFloat(document.getElementById('custom-ex-increment').value) || 0;
+  const deloadPct = Math.max(parseFloat(document.getElementById('custom-ex-deload').value) || 0, 0) / 100;
+
+  const key = `custom_${Date.now()}`;
+  state.customExercises = state.customExercises || {};
+  state.customExercises[key] = { name, sets, reps, deloadPct, workout };
+
+  state.exercises = state.exercises || {};
+  state.exercises[key] = { weight, increment, fails: 0 };
+
+  // Add it to the in-progress session too, if it's for the workout currently being done.
+  if (state.session && state.session.workout === workout) {
+    state.session.sets[key] = Array(sets).fill('pending');
+  }
+
+  saveState(state);
+
+  document.getElementById('custom-ex-name').value = '';
+  document.getElementById('custom-ex-sets').value = '5';
+  document.getElementById('custom-ex-reps').value = '5';
+  document.getElementById('custom-ex-weight').value = '45';
+  document.getElementById('custom-ex-increment').value = '5';
+  document.getElementById('custom-ex-deload').value = '10';
+
+  renderCustomExerciseList();
+});
+
+document.getElementById('custom-exercise-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('.remove-custom-ex-btn');
+  if (!btn) return;
+
+  const key = btn.dataset.key;
+  const meta = state.customExercises[key];
+  if (!confirm(`Remove "${meta.name}"? Its past history will be kept, but you won't be able to log it anymore.`)) {
+    return;
+  }
+
+  delete state.customExercises[key];
+  if (state.exercises) delete state.exercises[key];
+  if (state.session && state.session.sets) delete state.session.sets[key];
+
+  saveState(state);
+  renderCustomExerciseList();
+});
 
 function renderSetupForm(isEdit) {
   const unitRadios = document.querySelectorAll('input[name="unit"]');
@@ -278,8 +401,8 @@ function renderSetupForm(isEdit) {
 
 function newSessionFor(workoutKey) {
   const sets = {};
-  WORKOUTS[workoutKey].forEach((key) => {
-    sets[key] = Array(EXERCISES[key].sets).fill('pending');
+  getWorkoutExercises(workoutKey).forEach((key) => {
+    sets[key] = Array(getExerciseMeta(key).sets).fill('pending');
   });
   const session = { workout: workoutKey, sets };
   if (state.lastBodyWeight !== undefined) {
@@ -329,8 +452,8 @@ function renderHomeScreen() {
 
   const list = document.getElementById('exercise-list');
   list.innerHTML = '';
-  WORKOUTS[state.session.workout].forEach((key) => {
-    const meta = EXERCISES[key];
+  getWorkoutExercises(state.session.workout).forEach((key) => {
+    const meta = getExerciseMeta(key);
     const ex = state.exercises[key];
     const setsHtml = state.session.sets[key]
       .map((status, i) => {
@@ -364,9 +487,9 @@ function finishWorkout() {
   const results = {};
   let totalWeight = 0;
 
-  WORKOUTS[workoutKey].forEach((key) => {
+  getWorkoutExercises(workoutKey).forEach((key) => {
     const sets = state.session.sets[key];
-    const meta = EXERCISES[key];
+    const meta = getExerciseMeta(key);
     const allDone = sets.every((s) => s === meta.reps);
     const ex = state.exercises[key];
 
@@ -379,17 +502,17 @@ function finishWorkout() {
     if (allDone) {
       ex.weight = roundTo2(ex.weight + ex.increment);
       ex.fails = 0;
-      results[key] = { outcome: 'success', weight: ex.weight, fails: 0 };
+      results[key] = { outcome: 'success', weight: ex.weight, fails: 0, name: meta.name };
       lines.push(`${meta.name}: nailed it! Next time: ${ex.weight} ${state.unit}`);
     } else {
       ex.fails = (ex.fails || 0) + 1;
       if (ex.fails >= 3) {
         ex.weight = roundWeight(ex.weight * (1 - meta.deloadPct), state.unit);
         ex.fails = 0;
-        results[key] = { outcome: 'deload', weight: ex.weight, fails: 0 };
+        results[key] = { outcome: 'deload', weight: ex.weight, fails: 0, name: meta.name };
         lines.push(`${meta.name}: missed 3rd time - deloaded to ${ex.weight} ${state.unit}`);
       } else {
-        results[key] = { outcome: 'fail', weight: ex.weight, fails: ex.fails };
+        results[key] = { outcome: 'fail', weight: ex.weight, fails: ex.fails, name: meta.name };
         lines.push(`${meta.name}: missed a set (${ex.fails}/3). Weight stays ${ex.weight} ${state.unit}`);
       }
     }
@@ -444,8 +567,8 @@ const CHART_COLORS = {
   bodyWeight: '#64748b',
 };
 
-// All chart lines: the 5 lift exercises plus body weight.
-const CHART_KEYS = [...ORDER, 'bodyWeight'];
+// Colors for custom exercises, assigned in the order they were added.
+const CUSTOM_CHART_COLORS = ['#0ea5e9', '#84cc16', '#ec4899', '#f97316', '#14b8a6', '#8b5cf6', '#eab308', '#06b6d4'];
 
 const OUTCOME_LABELS = {
   success: 'Success',
@@ -483,14 +606,15 @@ function renderHistoryScreen() {
 
   [...history].reverse().forEach((entry) => {
     const date = new Date(entry.date).toLocaleDateString();
-    const rows = WORKOUTS[entry.workout]
+    const rows = Object.keys(entry.results)
       .map((key) => {
         const r = entry.results[key];
-        const meta = EXERCISES[key];
+        const meta = getExerciseMeta(key);
+        const name = (meta && meta.name) || r.name || key;
         const label = r.outcome === 'fail' ? `${OUTCOME_LABELS.fail} (${r.fails}/3)` : OUTCOME_LABELS[r.outcome];
         return `
           <div class="history-exercise">
-            <span>${meta.name}</span>
+            <span>${name}</span>
             <span class="tag ${r.outcome}">${label}</span>
             <span>${r.weight} ${state.unit}</span>
           </div>
@@ -540,17 +664,24 @@ function renderProgressScreen() {
   chartCanvas.classList.remove('hidden');
   emptyMsg.classList.add('hidden');
 
+  const customKeys = Object.keys(state.customExercises || {});
+  const chartKeys = [...ORDER, ...customKeys, 'bodyWeight'];
+
   const labels = chartHistory.map((entry) => new Date(entry.date).toLocaleDateString());
-  const datasets = CHART_KEYS.map((key) => {
+  const datasets = chartKeys.map((key) => {
     const isBodyWeight = key === 'bodyWeight';
+    const customIndex = customKeys.indexOf(key);
+    const color = isBodyWeight
+      ? CHART_COLORS.bodyWeight
+      : CHART_COLORS[key] || CUSTOM_CHART_COLORS[customIndex % CUSTOM_CHART_COLORS.length];
     return {
-      label: isBodyWeight ? `Body Weight (${state.unit})` : EXERCISES[key].name,
+      label: isBodyWeight ? `Body Weight (${state.unit})` : getExerciseMeta(key).name,
       data: chartHistory.map((entry) => {
         if (isBodyWeight) return entry.bodyWeight !== undefined ? entry.bodyWeight : null;
         return entry.results[key] ? entry.results[key].weight : null;
       }),
-      borderColor: CHART_COLORS[key],
-      backgroundColor: CHART_COLORS[key],
+      borderColor: color,
+      backgroundColor: color,
       spanGaps: true,
       tension: 0.2,
       hidden: !visibleExercises.has(key),
@@ -571,7 +702,7 @@ function renderProgressScreen() {
           onClick: (e, legendItem, legend) => {
             const chart = legend.chart;
             const index = legendItem.datasetIndex;
-            const key = CHART_KEYS[index];
+            const key = chartKeys[index];
             if (chart.isDatasetVisible(index)) {
               chart.hide(index);
               visibleExercises.delete(key);
@@ -614,10 +745,10 @@ function buildExportCsv() {
     const workoutName = `Workout ${entry.workout}`;
     const bodyWeight = entry.bodyWeight !== undefined ? entry.bodyWeight : '';
 
-    WORKOUTS[entry.workout].forEach((key) => {
+    Object.keys(entry.results).forEach((key) => {
       const r = entry.results[key];
       if (!r) return;
-      const meta = EXERCISES[key];
+      const meta = getExerciseMeta(key) || { name: r.name || key, sets: 5, reps: 5, deloadPct: 0.10 };
       const increment = (state.exercises[key] && state.exercises[key].increment) || 0;
 
       // Estimate the weight actually used in this session, since the history only
@@ -676,9 +807,10 @@ function parseCsv(text) {
 // whether the session was a success, a missed-rep attempt, or a deload.
 function buildHistoryFromCsv(rows) {
   const sessionsMap = new Map();
+  const importExerciseMap = getImportExerciseMap();
 
   rows.forEach((row) => {
-    const exerciseKey = IMPORT_EXERCISE_MAP[row.Exercise];
+    const exerciseKey = importExerciseMap[row.Exercise];
     if (!exerciseKey) return; // skip exercises we don't track (e.g. Pullups)
 
     const date = row['Date (yyyy/mm/dd)'];
@@ -696,7 +828,7 @@ function buildHistoryFromCsv(rows) {
       });
     }
 
-    const meta = EXERCISES[exerciseKey];
+    const meta = getExerciseMeta(exerciseKey);
     const weight = parseFloat(row['Set 1 (LBS)']);
     let success = true;
     for (let s = 1; s <= meta.sets; s++) {
@@ -721,10 +853,11 @@ function buildHistoryFromCsv(rows) {
 
   sessions.forEach((session) => {
     const results = {};
-    WORKOUTS[session.workout].forEach((key) => {
+    getWorkoutExercises(session.workout).forEach((key) => {
       const data = session.exercises[key];
       if (!data) return;
 
+      const meta = getExerciseMeta(key);
       const prevWeight = lastWeight[key];
       let outcome;
       if (data.success) {
@@ -744,6 +877,7 @@ function buildHistoryFromCsv(rows) {
         outcome,
         weight: data.weight,
         fails: outcome === 'fail' ? Math.min(failsTracker[key], 3) : 0,
+        name: meta.name,
       };
       lastWeight[key] = data.weight;
     });
@@ -776,6 +910,16 @@ function applyImport(result) {
       weight: result.lastWeight[key] !== undefined ? result.lastWeight[key] : UNIT_DEFAULTS[unit][key].weight,
       increment: UNIT_DEFAULTS[unit][key].increment,
       fails: result.failsTracker[key] !== undefined ? result.failsTracker[key] : existingFails,
+    };
+  });
+
+  // Custom exercises keep their existing weight/increment unless the import has newer data.
+  Object.keys(state.customExercises || {}).forEach((key) => {
+    const existing = state.exercises[key] || { weight: 0, increment: 0, fails: 0 };
+    state.exercises[key] = {
+      weight: result.lastWeight[key] !== undefined ? result.lastWeight[key] : existing.weight,
+      increment: existing.increment,
+      fails: result.failsTracker[key] !== undefined ? result.failsTracker[key] : existing.fails || 0,
     };
   });
 
