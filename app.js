@@ -2,7 +2,7 @@ const STORAGE_KEY = 'sl5x5_state';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -211,6 +211,8 @@ async function pushStateToCloud() {
   }
 }
 
+const SYNC_FLAG_PREFIX = 'sl5x5_synced_';
+
 // Pulls the latest saved state from another device (if newer) or pushes the
 // current local state to the cloud (if it's newer or nothing is saved yet).
 async function syncStateWithCloud() {
@@ -223,16 +225,25 @@ async function syncStateWithCloud() {
       .maybeSingle();
     if (error) throw error;
 
+    const syncFlagKey = SYNC_FLAG_PREFIX + currentUser.id;
+    const hasSyncedBefore = localStorage.getItem(syncFlagKey) === 'true';
+
     const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
     const remoteUpdatedAt = data ? new Date(data.updated_at).getTime() : 0;
 
-    if (data && remoteUpdatedAt > localUpdatedAt) {
+    // The first time this device syncs with this account, prefer any existing
+    // cloud data over local data - local data is just this device's own
+    // pre-sign-in state, while the cloud copy is whatever another device
+    // already set up. After that, fall back to comparing timestamps.
+    if (data && (!hasSyncedBefore || remoteUpdatedAt > localUpdatedAt)) {
       state = data.state;
       await persistToIndexedDb(state);
       refreshAllScreens();
     } else if (!data || localUpdatedAt > remoteUpdatedAt) {
       await pushStateToCloud();
     }
+
+    localStorage.setItem(syncFlagKey, 'true');
   } catch (e) {
     // Offline or request failed - sync will retry on the next sign-in or save.
   }
