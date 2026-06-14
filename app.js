@@ -1,8 +1,9 @@
 const STORAGE_KEY = 'sl5x5_state';
+const LAST_SCREEN_KEY = 'sl5x5_last_screen';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -1785,8 +1786,7 @@ document.getElementById('setup-form').addEventListener('submit', (e) => {
   state.session = null; // restart the session in case the workout in progress changed
 
   saveState(state);
-  renderHomeScreen();
-  showScreen('home');
+  goToScreen('home');
 });
 
 document.getElementById('import-csv').addEventListener('change', (e) => {
@@ -1816,8 +1816,7 @@ document.getElementById('import-csv').addEventListener('change', (e) => {
     if (!confirm(message)) return;
 
     applyImport(result);
-    renderHomeScreen();
-    showScreen('home');
+    goToScreen('home');
     alert('Import complete! Your history and weights have been updated.');
   };
   reader.onerror = () => {
@@ -1828,8 +1827,7 @@ document.getElementById('import-csv').addEventListener('change', (e) => {
 });
 
 document.getElementById('start-workout-btn').addEventListener('click', () => {
-  renderHomeScreen();
-  showScreen('home');
+  goToScreen('home');
 });
 
 document.getElementById('deload-slider').addEventListener('input', updateDeloadPreview);
@@ -1971,25 +1969,31 @@ document.getElementById('finish-btn').addEventListener('click', () => {
   showCongratsModal(result);
 });
 
+function goToScreen(name) {
+  switch (name) {
+    case 'home':
+      renderHomeScreen();
+      break;
+    case 'progress':
+      renderProgressScreen();
+      break;
+    case 'history':
+      renderHistoryScreen();
+      break;
+    case 'settings':
+      renderSetupForm(true);
+      break;
+    default:
+      renderDashboard();
+      name = 'dashboard';
+  }
+  showScreen(name);
+  localStorage.setItem(LAST_SCREEN_KEY, name);
+}
+
 document.querySelectorAll('.nav-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const screen = btn.dataset.screen;
-    if (screen === 'dashboard') {
-      renderDashboard();
-      showScreen('dashboard');
-    } else if (screen === 'home') {
-      renderHomeScreen();
-      showScreen('home');
-    } else if (screen === 'progress') {
-      renderProgressScreen();
-      showScreen('progress');
-    } else if (screen === 'history') {
-      renderHistoryScreen();
-      showScreen('history');
-    } else if (screen === 'settings') {
-      renderSetupForm(true);
-      showScreen('settings');
-    }
+    goToScreen(btn.dataset.screen);
   });
 });
 
@@ -2045,8 +2049,9 @@ async function init() {
   document.getElementById('app-version').textContent = `Version ${APP_VERSION}`;
   state = await loadState();
   if (state.setupComplete) {
-    renderDashboard();
-    showScreen('dashboard');
+    const validScreens = ['dashboard', 'home', 'progress', 'history', 'settings'];
+    const lastScreen = localStorage.getItem(LAST_SCREEN_KEY);
+    goToScreen(validScreens.includes(lastScreen) ? lastScreen : 'dashboard');
   } else {
     renderSetupForm(false);
     showScreen('setup');
