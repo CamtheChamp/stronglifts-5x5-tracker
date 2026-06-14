@@ -3,7 +3,7 @@ const LAST_SCREEN_KEY = 'sl5x5_last_screen';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -20,6 +20,9 @@ const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'und
 
 let currentUser = null;
 let cloudSyncTimer = null;
+// The `updated_at` last seen from the cloud row, for the debug display in
+// Settings > Data. Updated whenever we read the row (sync, force pull/push).
+let lastKnownCloudUpdatedAt = null;
 
 // Order matters for the setup form and matches how exercises appear in each workout.
 const ORDER = ['squat', 'bench', 'row', 'ohp', 'deadlift'];
@@ -224,11 +227,14 @@ async function pushStateToCloud() {
   if (!navigator.onLine) return; // will retry on the next save, sync, or 'online' event
   if (!state.updatedAt) state.updatedAt = new Date().toISOString();
   try {
-    await sb.from('user_state').upsert({
+    const { error } = await sb.from('user_state').upsert({
       user_id: currentUser.id,
       state,
       updated_at: state.updatedAt,
     });
+    if (error) throw error;
+    lastKnownCloudUpdatedAt = state.updatedAt;
+    updateAccountUI();
   } catch (e) {
     // Offline or request failed - the next save/sync will retry.
   }
@@ -248,6 +254,9 @@ async function syncStateWithCloud() {
       .maybeSingle();
     if (error) throw error;
 
+    lastKnownCloudUpdatedAt = data ? data.updated_at : null;
+    updateAccountUI();
+
     const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
     const remoteUpdatedAt = data ? new Date(data.updated_at).getTime() : 0;
 
@@ -255,6 +264,7 @@ async function syncStateWithCloud() {
       state = data.state;
       await persistToIndexedDb(state);
       refreshAllScreens();
+      updateAccountUI();
     } else {
       await pushStateToCloud();
     }
@@ -286,14 +296,22 @@ function refreshAllScreens() {
   }
 }
 
+function formatSyncTimestamp(iso) {
+  return iso ? new Date(iso).toLocaleString() : 'never';
+}
+
 function updateAccountUI() {
   const section = document.getElementById('cloud-sync-section');
   if (!section) return;
   document.getElementById('account-signed-out').classList.toggle('hidden', !!currentUser);
   document.getElementById('account-signed-in').classList.toggle('hidden', !currentUser);
   if (currentUser) {
-    document.getElementById('account-email').textContent = `Signed in as ${currentUser.email}`;
-    document.getElementById('sync-status').textContent = '';
+    document.getElementById('account-email').textContent =
+      `Signed in as ${currentUser.email} (user id: ${currentUser.id})`;
+    document.getElementById('local-updated-at').textContent =
+      `This device's data last changed: ${formatSyncTimestamp(state.updatedAt)}`;
+    document.getElementById('cloud-updated-at').textContent =
+      `Cloud data last changed: ${formatSyncTimestamp(lastKnownCloudUpdatedAt)}`;
   }
 }
 
@@ -337,7 +355,9 @@ function initAuth() {
       }
       state = data.state;
       await persistToIndexedDb(state);
+      lastKnownCloudUpdatedAt = data.updated_at;
       refreshAllScreens();
+      updateAccountUI();
       setSyncStatus(`Pulled cloud data from ${new Date(data.updated_at).toLocaleString()}.`);
     } catch (e) {
       setSyncStatus(`Pull failed: ${e.message}`);
@@ -356,6 +376,8 @@ function initAuth() {
         updated_at: state.updatedAt,
       });
       if (error) throw error;
+      lastKnownCloudUpdatedAt = state.updatedAt;
+      updateAccountUI();
       setSyncStatus(`Pushed local data to the cloud at ${new Date(state.updatedAt).toLocaleString()}.`);
     } catch (e) {
       setSyncStatus(`Push failed: ${e.message}`);
