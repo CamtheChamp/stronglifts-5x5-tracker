@@ -461,42 +461,6 @@ input[type="radio"] {
   margin-top: 16px;
 }
 
-.update-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  max-width: 480px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 10px;
-  background: linear-gradient(180deg, var(--crimson-bright), var(--crimson));
-  color: var(--text-light);
-  font-family: 'Oswald', sans-serif;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.85rem;
-  z-index: 200;
-  border-bottom: 2px solid var(--gold);
-}
-
-#update-btn {
-  padding: 6px 14px;
-  border-radius: 4px;
-  border: 1px solid var(--bronze-dark);
-  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
-  color: var(--bg-black);
-  font-family: 'Oswald', sans-serif;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-}
-
 .rest-timer-bar {
   position: fixed;
   bottom: 56px;

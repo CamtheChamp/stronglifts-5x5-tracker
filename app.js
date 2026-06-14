@@ -2,7 +2,7 @@ const STORAGE_KEY = 'sl5x5_state';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v20';
+const APP_VERSION = 'v21';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -2056,50 +2056,22 @@ async function init() {
 
 init();
 
-// --- Service worker update handling ---
+// --- Service worker ---
 
-// Once the new worker takes over, reload so the page picks up the new assets.
-let refreshing = false;
-
-function reloadForUpdate() {
-  if (refreshing) return;
-  refreshing = true;
-  window.location.reload();
-}
-
-function showUpdateBanner(worker) {
-  const banner = document.getElementById('update-banner');
-  banner.classList.remove('hidden');
-  document.getElementById('update-btn').onclick = () => {
-    worker.postMessage('SKIP_WAITING');
-    banner.classList.add('hidden');
-    // controllerchange should fire and trigger the reload, but some mobile
-    // browsers don't reliably deliver it after a postMessage-triggered
-    // skipWaiting, so fall back to a timed reload either way.
-    setTimeout(reloadForUpdate, 750);
-  };
-}
-
+// When a new service worker takes over, reload once so the page picks up the
+// new assets. Combined with skipWaiting()/clients.claim() in sw.js, this
+// means updates apply automatically without prompting the user.
 if ('serviceWorker' in navigator) {
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((registration) => {
-      // A worker may already be waiting from a previous visit (e.g. if the
-      // user didn't tap "update" last time).
-      if (registration.waiting) {
-        showUpdateBanner(registration.waiting);
-      }
-
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner(newWorker);
-          }
-        });
-      });
-
-      // Check for a fresh service worker whenever the app is reopened/foregrounded.
+      // Check for a new service worker whenever the app is reopened/foregrounded.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           registration.update().catch(() => {});
@@ -2107,6 +2079,4 @@ if ('serviceWorker' in navigator) {
       });
     }).catch(() => {});
   });
-
-  navigator.serviceWorker.addEventListener('controllerchange', reloadForUpdate);
 }
