@@ -1,7 +1,7 @@
 // Bump this with every deploy. It busts the cache below AND should match the
 // ?v= query string on style.css/app.js/manifest.json in index.html, so
 // browsers (and this service worker) always pick up the new files.
-const VERSION = 'v22';
+const VERSION = 'v23';
 const CACHE_NAME = `sl5x5-cache-${VERSION}`;
 
 const PRECACHE_ASSETS = [

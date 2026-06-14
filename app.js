@@ -3,7 +3,7 @@ const LAST_SCREEN_KEY = 'sl5x5_last_screen';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -192,15 +192,37 @@ async function saveState(state) {
 }
 
 // --- Cloud sync ---
+//
+// IndexedDB is just an offline cache. Supabase is the source of truth:
+// - Every save pushes to Supabase (debounced briefly to coalesce rapid
+//   changes, but flushed immediately when the app is hidden/closed).
+// - Every load/foreground/reconnect pulls from Supabase and, if the cloud
+//   copy is newer, overwrites local state with it. If local is newer (e.g.
+//   offline edits that haven't been pushed yet), it's pushed up instead.
+
+// A short debounce coalesces bursts of saves (e.g. checking off several sets
+// in a row) without meaningfully delaying the push to the cloud.
+const CLOUD_SYNC_DEBOUNCE_MS = 500;
 
 function scheduleCloudSync() {
   if (!sb || !currentUser) return;
   clearTimeout(cloudSyncTimer);
-  cloudSyncTimer = setTimeout(() => pushStateToCloud(), 1500);
+  cloudSyncTimer = setTimeout(() => pushStateToCloud(), CLOUD_SYNC_DEBOUNCE_MS);
+}
+
+// Pushes immediately, bypassing the debounce - used when the app is about to
+// be hidden/closed so an in-flight save isn't lost.
+function flushCloudSync() {
+  if (!sb || !currentUser) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = null;
+  pushStateToCloud();
 }
 
 async function pushStateToCloud() {
   if (!sb || !currentUser) return;
+  if (!navigator.onLine) return; // will retry on the next save, sync, or 'online' event
+  if (!state.updatedAt) state.updatedAt = new Date().toISOString();
   try {
     await sb.from('user_state').upsert({
       user_id: currentUser.id,
@@ -208,16 +230,16 @@ async function pushStateToCloud() {
       updated_at: state.updatedAt,
     });
   } catch (e) {
-    // Offline or request failed - the next save will retry.
+    // Offline or request failed - the next save/sync will retry.
   }
 }
 
-const SYNC_FLAG_PREFIX = 'sl5x5_synced_';
-
-// Pulls the latest saved state from another device (if newer) or pushes the
-// current local state to the cloud (if it's newer or nothing is saved yet).
+// Pulls the latest saved state from the cloud if it's newer than (or equal
+// to) what's stored locally, otherwise pushes the current local state up
+// (e.g. edits made while offline that haven't reached the cloud yet).
 async function syncStateWithCloud() {
   if (!sb || !currentUser) return;
+  if (!navigator.onLine) return;
   try {
     const { data, error } = await sb
       .from('user_state')
@@ -226,27 +248,18 @@ async function syncStateWithCloud() {
       .maybeSingle();
     if (error) throw error;
 
-    const syncFlagKey = SYNC_FLAG_PREFIX + currentUser.id;
-    const hasSyncedBefore = localStorage.getItem(syncFlagKey) === 'true';
-
     const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
     const remoteUpdatedAt = data ? new Date(data.updated_at).getTime() : 0;
 
-    // The first time this device syncs with this account, prefer any existing
-    // cloud data over local data - local data is just this device's own
-    // pre-sign-in state, while the cloud copy is whatever another device
-    // already set up. After that, fall back to comparing timestamps.
-    if (data && (!hasSyncedBefore || remoteUpdatedAt > localUpdatedAt)) {
+    if (data && remoteUpdatedAt >= localUpdatedAt) {
       state = data.state;
       await persistToIndexedDb(state);
       refreshAllScreens();
-    } else if (!data || localUpdatedAt > remoteUpdatedAt) {
+    } else {
       await pushStateToCloud();
     }
-
-    localStorage.setItem(syncFlagKey, 'true');
   } catch (e) {
-    // Offline or request failed - sync will retry on the next sign-in or save.
+    // Offline or request failed - sync will retry on the next sign-in, save, or reconnect.
   }
 }
 
@@ -324,7 +337,6 @@ function initAuth() {
       }
       state = data.state;
       await persistToIndexedDb(state);
-      localStorage.setItem(SYNC_FLAG_PREFIX + currentUser.id, 'true');
       refreshAllScreens();
       setSyncStatus(`Pulled cloud data from ${new Date(data.updated_at).toLocaleString()}.`);
     } catch (e) {
@@ -344,7 +356,6 @@ function initAuth() {
         updated_at: state.updatedAt,
       });
       if (error) throw error;
-      localStorage.setItem(SYNC_FLAG_PREFIX + currentUser.id, 'true');
       setSyncStatus(`Pushed local data to the cloud at ${new Date(state.updatedAt).toLocaleString()}.`);
     } catch (e) {
       setSyncStatus(`Push failed: ${e.message}`);
@@ -361,10 +372,27 @@ function initAuth() {
 
   // Re-check the cloud whenever the app comes back to the foreground, so changes
   // made on another device while this one was open/backgrounded get pulled in.
+  // When it's about to go to the background (or close), flush any pending push
+  // immediately rather than waiting for the debounce.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && currentUser) {
+    if (!currentUser) return;
+    if (document.visibilityState === 'visible') {
       syncStateWithCloud();
+    } else {
+      flushCloudSync();
     }
+  });
+
+  // Mobile browsers/PWAs don't always fire visibilitychange before closing -
+  // pagehide is the more reliable "about to go away" signal there.
+  window.addEventListener('pagehide', () => {
+    if (currentUser) flushCloudSync();
+  });
+
+  // If a save (or pull) failed while offline, retry as soon as connectivity
+  // returns so local changes sync up automatically.
+  window.addEventListener('online', () => {
+    if (currentUser) syncStateWithCloud();
   });
 }
 
@@ -2048,6 +2076,23 @@ document.getElementById('timer-skip-btn').addEventListener('click', () => {
 async function init() {
   document.getElementById('app-version').textContent = `Version ${APP_VERSION}`;
   state = await loadState();
+
+  // If signed in, pull the latest state from Supabase before the first
+  // render so we don't show stale local data. getSession() restores the
+  // session from local storage without a network call, so this is fast even
+  // when the cloud fetch inside syncStateWithCloud() is skipped/fails.
+  if (sb) {
+    try {
+      const { data } = await sb.auth.getSession();
+      currentUser = data.session ? data.session.user : null;
+    } catch (e) {
+      currentUser = null;
+    }
+    if (currentUser) {
+      await syncStateWithCloud();
+    }
+  }
+
   if (state.setupComplete) {
     const validScreens = ['dashboard', 'home', 'progress', 'history', 'settings'];
     const lastScreen = localStorage.getItem(LAST_SCREEN_KEY);
