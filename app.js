@@ -2,7 +2,7 @@ const STORAGE_KEY = 'sl5x5_state';
 
 // Bump this alongside CACHE_NAME in sw.js so the dashboard shows which build is
 // currently loaded - handy for confirming an update actually took effect.
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v20';
 
 // --- Cloud sync (Supabase) ---
 // To enable cloud sync, create a Supabase project, run supabase/schema.sql in its
@@ -279,7 +279,13 @@ function updateAccountUI() {
   document.getElementById('account-signed-in').classList.toggle('hidden', !currentUser);
   if (currentUser) {
     document.getElementById('account-email').textContent = `Signed in as ${currentUser.email}`;
+    document.getElementById('sync-status').textContent = '';
   }
+}
+
+function setSyncStatus(message) {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = message;
 }
 
 function initAuth() {
@@ -303,7 +309,7 @@ function initAuth() {
 
   document.getElementById('force-pull-btn').addEventListener('click', async () => {
     if (!currentUser) return;
-    if (!confirm("Overwrite this device's data with whatever is currently saved in the cloud?")) return;
+    setSyncStatus('Pulling from cloud...');
     try {
       const { data, error } = await sb
         .from('user_state')
@@ -312,22 +318,22 @@ function initAuth() {
         .maybeSingle();
       if (error) throw error;
       if (!data) {
-        alert('No data found in the cloud for this account.');
+        setSyncStatus('No data found in the cloud for this account.');
         return;
       }
       state = data.state;
       await persistToIndexedDb(state);
       localStorage.setItem(SYNC_FLAG_PREFIX + currentUser.id, 'true');
       refreshAllScreens();
-      alert('Pulled the latest data from the cloud.');
+      setSyncStatus(`Pulled cloud data from ${new Date(data.updated_at).toLocaleString()}.`);
     } catch (e) {
-      alert(`Pull failed: ${e.message}`);
+      setSyncStatus(`Pull failed: ${e.message}`);
     }
   });
 
   document.getElementById('force-push-btn').addEventListener('click', async () => {
     if (!currentUser) return;
-    if (!confirm("Overwrite the cloud data with this device's current data?")) return;
+    setSyncStatus('Pushing to cloud...');
     state.updatedAt = new Date().toISOString();
     await persistToIndexedDb(state);
     try {
@@ -338,9 +344,9 @@ function initAuth() {
       });
       if (error) throw error;
       localStorage.setItem(SYNC_FLAG_PREFIX + currentUser.id, 'true');
-      alert("Pushed this device's data to the cloud.");
+      setSyncStatus(`Pushed local data to the cloud at ${new Date(state.updatedAt).toLocaleString()}.`);
     } catch (e) {
-      alert(`Push failed: ${e.message}`);
+      setSyncStatus(`Push failed: ${e.message}`);
     }
   });
 
